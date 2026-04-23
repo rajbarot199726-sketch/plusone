@@ -1,9 +1,9 @@
 # plusone
 
-A super-light Chrome extension for Google Sheets that shows tiny hover controls on cells:
+A super-light Chrome extension for Google Sheets that shows tiny hover controls near your cursor while you're over the sheet grid:
 
-- `+` button in the top-left corner increments numeric cell values by 1.
-- `−` button in the top-right corner decrements numeric cell values by 1.
+- `+` increments the selected cell by 1.
+- `−` decrements the selected cell by 1.
 
 ## Load the extension
 
@@ -14,6 +14,6 @@ A super-light Chrome extension for Google Sheets that shows tiny hover controls 
 
 ## Notes
 
-- Runs only on `docs.google.com/spreadsheets/*`
-- Buttons are tiny and only visible while hovering a cell to minimize interference.
-- Operates on cells that currently contain plain numeric values.
+- Runs only on `docs.google.com/spreadsheets/*`.
+- Buttons only appear when your cursor is over the sheet grid and the active cell value is numeric.
+- UI is intentionally tiny and transient to avoid interfering with normal spreadsheet usage.

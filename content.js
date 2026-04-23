@@ -3,23 +3,22 @@
   window.__sheetPlusMinusLoaded = true;
 
   const BTN_SIZE = 14;
-  const OFFSET = 1;
-  let activeCell = null;
-  let hideTimer = null;
+  const GAP = 2;
+  let lastPointer = { x: 0, y: 0 };
+  let insideSheet = false;
 
   const style = document.createElement('style');
   style.textContent = `
     .spm-btn {
-      position: absolute;
+      position: fixed;
       width: ${BTN_SIZE}px;
       height: ${BTN_SIZE}px;
       line-height: ${BTN_SIZE}px;
       font-size: 11px;
       font-family: system-ui, sans-serif;
       border-radius: 3px;
-      border: 1px solid rgba(0, 0, 0, 0.2);
-      background: rgba(255, 255, 255, 0.95);
-      color: #222;
+      border: 1px solid rgba(0,0,0,.2);
+      background: rgba(255,255,255,.96);
       text-align: center;
       cursor: pointer;
       user-select: none;
@@ -29,10 +28,7 @@
       pointer-events: none;
       transition: opacity 80ms linear;
     }
-    .spm-btn.spm-show {
-      opacity: 1;
-      pointer-events: auto;
-    }
+    .spm-btn.spm-show { opacity: 1; pointer-events: auto; }
     .spm-plus { color: #0b8043; }
     .spm-minus { color: #b31412; }
   `;
@@ -41,12 +37,18 @@
   const plus = document.createElement('div');
   plus.className = 'spm-btn spm-plus';
   plus.textContent = '+';
-
   const minus = document.createElement('div');
   minus.className = 'spm-btn spm-minus';
   minus.textContent = '−';
-
   document.body.append(plus, minus);
+
+  function getFormulaInput() {
+    return (
+      document.querySelector('#t-formula-bar-input') ||
+      document.querySelector('textarea[aria-label="Formula bar"]') ||
+      document.querySelector('textarea.docs-sheet-active-input')
+    );
+  }
 
   function parseNumeric(text) {
     if (!text) return null;
@@ -56,25 +58,38 @@
     return Number.isFinite(num) ? num : null;
   }
 
-  function getCellFromTarget(target) {
-    if (!(target instanceof Element)) return null;
-    const cell = target.closest('[role="gridcell"]');
-    if (!cell || !document.body.contains(cell)) return null;
-    return cell;
+  function setNativeValue(el, value) {
+    const setter = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value')?.set;
+    if (setter) {
+      setter.call(el, value);
+    } else {
+      el.value = value;
+    }
   }
 
-  function positionButtons(cell) {
-    const r = cell.getBoundingClientRect();
-    if (r.width < 20 || r.height < 16) {
+  function canAdjust() {
+    const formula = getFormulaInput();
+    if (!formula) return false;
+    return parseNumeric(formula.value) !== null;
+  }
+
+  function positionButtons() {
+    const margin = 8;
+    const x = Math.max(margin, Math.min(lastPointer.x, window.innerWidth - BTN_SIZE * 2 - GAP - margin));
+    const y = Math.max(margin, Math.min(lastPointer.y - BTN_SIZE - GAP, window.innerHeight - BTN_SIZE - margin));
+
+    plus.style.left = `${x}px`;
+    plus.style.top = `${y}px`;
+    minus.style.left = `${x + BTN_SIZE + GAP}px`;
+    minus.style.top = `${y}px`;
+  }
+
+  function showButtons() {
+    if (!insideSheet || !canAdjust()) {
       hideButtons();
       return;
     }
-
-    plus.style.left = `${Math.round(r.left + window.scrollX + OFFSET)}px`;
-    plus.style.top = `${Math.round(r.top + window.scrollY + OFFSET)}px`;
-    minus.style.left = `${Math.round(r.right + window.scrollX - BTN_SIZE - OFFSET)}px`;
-    minus.style.top = `${Math.round(r.top + window.scrollY + OFFSET)}px`;
-
+    positionButtons();
     plus.classList.add('spm-show');
     minus.classList.add('spm-show');
   }
@@ -82,72 +97,54 @@
   function hideButtons() {
     plus.classList.remove('spm-show');
     minus.classList.remove('spm-show');
-    activeCell = null;
-  }
-
-  function writeToCell(cell, value) {
-    cell.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    cell.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    cell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-
-    const formula =
-      document.querySelector('#t-formula-bar-input') ||
-      document.querySelector('textarea[aria-label="Formula bar"]') ||
-      document.querySelector('textarea.docs-sheet-active-input');
-
-    if (formula) {
-      formula.focus();
-      formula.value = String(value);
-      formula.dispatchEvent(new Event('input', { bubbles: true }));
-      formula.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
-      formula.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
-    } else {
-      cell.textContent = String(value);
-    }
   }
 
   function adjust(delta) {
-    if (!activeCell) return;
-    const base = parseNumeric(activeCell.textContent);
+    const formula = getFormulaInput();
+    if (!formula) return;
+
+    const base = parseNumeric(formula.value);
     if (base === null) return;
-    writeToCell(activeCell, base + delta);
+
+    formula.focus();
+    setNativeValue(formula, String(base + delta));
+    formula.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(base + delta) }));
+    formula.dispatchEvent(new Event('change', { bubbles: true }));
+    formula.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+    formula.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
+
     hideButtons();
   }
 
-  plus.addEventListener('mousedown', (e) => e.stopPropagation());
-  minus.addEventListener('mousedown', (e) => e.stopPropagation());
+  function stop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  plus.addEventListener('mousedown', stop, true);
+  minus.addEventListener('mousedown', stop, true);
   plus.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    stop(e);
     adjust(1);
-  });
+  }, true);
   minus.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    stop(e);
     adjust(-1);
-  });
-
-  document.addEventListener(
-    'mousemove',
-    (e) => {
-      const cell = getCellFromTarget(e.target);
-      if (!cell) {
-        if (!plus.matches(':hover') && !minus.matches(':hover')) {
-          clearTimeout(hideTimer);
-          hideTimer = setTimeout(hideButtons, 50);
-        }
-        return;
-      }
-      clearTimeout(hideTimer);
-      activeCell = cell;
-      positionButtons(cell);
-    },
-    true
-  );
-
-  document.addEventListener('scroll', () => {
-    if (activeCell) positionButtons(activeCell);
   }, true);
 
+  document.addEventListener('mousemove', (e) => {
+    lastPointer = { x: e.clientX, y: e.clientY };
+
+    const target = e.target instanceof Element ? e.target : null;
+    insideSheet = !!target?.closest('#waffle-grid-container, .grid-container, #waffle-grid, [aria-label="Spreadsheet"]');
+
+    showButtons();
+  }, true);
+
+  document.addEventListener('scroll', () => {
+    if (plus.classList.contains('spm-show')) positionButtons();
+  }, true);
+
+  document.addEventListener('selectionchange', showButtons, true);
   window.addEventListener('blur', hideButtons);
 })();
