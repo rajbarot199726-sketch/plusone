@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Sheets Cell +/-",
+  "version": "0.1.0",
+  "description": "Adds tiny + and - hover buttons on Google Sheets cells to increment/decrement numeric values.",
+  "content_scripts": [
+    {
+      "matches": ["https://docs.google.com/spreadsheets/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
